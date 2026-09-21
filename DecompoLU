@@ -1,16 +1,36 @@
 using LinearAlgebra
 
 """
-Tradução do MATLAB para Julia do algoritmo de decomposição LU +
+algoritmo de decomposição LU +
 substituição avançada (resolve L*Y=B) e substituição atrasada
 (resolve U*X=Y), para a aula de Cálculo Numérico.
 """
 
+
 function ler_matriz(prompt::String)
-    print(prompt)
-    linha = readline()
-    return eval(Meta.parse(linha))
+    while true
+        print(prompt)
+        flush(stdout)
+        texto = readline(stdin)
+        # Aceita matriz digitada em varias linhas: continua lendo ate os
+        # colchetes fecharem.
+        while count(==('['), texto) > count(==(']'), texto)
+            print("... ")
+            flush(stdout)
+            texto *= "; " * readline(stdin)
+        end
+        try
+            M = Base.invokelatest(eval, Meta.parse(texto))
+            if M isa AbstractArray
+                return M
+            end
+            println("Entrada invalida: informe uma matriz, ex: [3; 19; 31]")
+        catch e
+            println("Entrada invalida (", e, "). Tente novamente.")
+        end
+    end
 end
+
 function main()
     A = ler_matriz("Entre com os coeficientes da Matriz A (ex: [4 1 -1; 2 7 1; 1 -3 12]): ")
     B = ler_matriz("Entre com os coeficientes da Matriz B (ex: [3; 19; 31]): ")
@@ -24,6 +44,11 @@ function main()
     F = lu(A)
     L = F.P' * F.L
     U = F.U
+
+    println("The Lower Triangular Matrix L is")
+    display(L); println()
+    println("The Upper Triangular Matrix U is")
+    display(U); println()
 
     P = [L B]
     li, col = size(P)
@@ -68,6 +93,9 @@ function main()
     soma = 0.0
     for m in li:-1:2
         for k in m+1:col
+            # No original em MATLAB esta linha era "soma = s + ...", com uma
+            # variavel "s" que nunca era definida (bug de digitacao -- em
+            # Julia isso da UndefVarError). Corrigido para "soma = soma + ...".
             soma = soma + Q[m-1, k-1] * Q[k-1, col]
             Q[m-1, col] = Q[m-1, col] - soma
             soma = 0.0
@@ -79,3 +107,6 @@ function main()
 end
 
 main()
+
+
+
