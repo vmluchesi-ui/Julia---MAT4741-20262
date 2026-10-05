@@ -1,0 +1,174 @@
+#=
+Método de Newton para sistemas não lineares F(x) = 0,  F: ℝⁿ → ℝⁿ.
+
+Iteração:
+    J(x⁽ᵏ⁾) s⁽ᵏ⁾ = -F(x⁽ᵏ⁾)        (resolve o sistema linear; NÃO inverte J)
+    x⁽ᵏ⁺¹⁾ = x⁽ᵏ⁾ + s⁽ᵏ⁾
+
+J é a matriz jacobiana: Jᵢⱼ = ∂Fᵢ/∂xⱼ.
+Se J for indisponível, usa-se aproximação por diferenças finitas progressivas:
+    J[:, j] ≈ (F(x + h eⱼ) - F(x)) / h,   h = √eps · max(1, |xⱼ|)
+
+Convergência: se x0 estiver suficientemente perto de x* e J(x*) for não singular,
+a convergência é quadrática:  ‖e⁽ᵏ⁺¹⁾‖ ≈ C ‖e⁽ᵏ⁾‖².
+
+Critérios de parada: ‖s⁽ᵏ⁾‖∞ / ‖x⁽ᵏ⁺¹⁾‖∞ < tol   ou   ‖F(x⁽ᵏ⁺¹⁾)‖∞ < tol_F
+=#
+
+using LinearAlgebra
+using Printf
+
+"""Jacobiana por diferenças finitas progressivas."""
+function jacobiana_numerica(F, x, Fx = F(x))
+    n = length(x)
+    J = zeros(length(Fx), n)
+    for j in 1:n
+        h = sqrt(eps()) * max(1.0, abs(x[j]))
+        xh = copy(x)
+        xh[j] += h
+        J[:, j] = (F(xh) - Fx) / h
+    end
+    return J
+end
+
+"""
+    newton_sistema(F, x0; J = nothing, tol, tol_F, max_iter, verbose)
+
+F  : função que recebe x (vetor) e devolve F(x) (vetor)
+x0 : aproximação inicial
+J  : função que devolve a jacobiana J(x); se `nothing`, usa diferenças finitas
+Retorna (x, número de iterações).
+"""
+function newton_sistema(F, x0; J = nothing, tol = 1e-10, tol_F = 1e-12,
+                        max_iter = 50, verbose = true)
+    x = float.(copy(x0))
+    n = length(x)
+
+    if verbose
+        @printf("%3s | ", "k")
+        for i in 1:n
+            @printf("%16s | ", "x$i")
+        end
+        @printf("%12s | %12s\n", "‖F(x)‖∞", "‖s‖∞")
+        println("-"^(7 + 19n + 32))
+        @printf("%3d | ", 0)
+        for xi in x
+            @printf("%16.12f | ", xi)
+        end
+        @printf("%12.3e |\n", norm(F(x), Inf))
+    end
+
+    for k in 1:max_iter
+        Fx = F(x)
+        Jx = J === nothing ? jacobiana_numerica(F, x, Fx) : J(x)
+
+        fat = lu(Jx; check = false)
+        issuccess(fat) || error("Jacobiana singular na iteração $k; " *
+                                "tente outra aproximação inicial.")
+        s = fat \ (-Fx)
+
+        x = x + s
+        normF = norm(F(x), Inf)
+        norm_s = norm(s, Inf)
+
+        if verbose
+            @printf("%3d | ", k)
+            for xi in x
+                @printf("%16.12f | ", xi)
+            end
+            @printf("%12.3e | %12.3e\n", normF, norm_s)
+        end
+
+        (norm_s / max(norm(x, Inf), 1e-30) < tol || normF < tol_F) && return x, k
+    end
+
+    println("Atenção: não convergiu em $max_iter iterações.")
+    return x, max_iter
+end
+
+"""Mostra eₖ = ‖x⁽ᵏ⁾ - x*‖∞ e as razões eₖ₊₁/eₖ e eₖ₊₁/eₖ²."""
+function ordem_convergencia(F, x0, x_exato; J = nothing, max_iter = 10)
+    x = float.(copy(x0))
+    erros = [norm(x - x_exato, Inf)]
+    for _ in 1:max_iter
+        Fx = F(x)
+        Jx = J === nothing ? jacobiana_numerica(F, x, Fx) : J(x)
+        x = x + Jx \ (-Fx)
+        push!(erros, norm(x - x_exato, Inf))
+        erros[end] < 1e-15 && break
+    end
+
+    @printf("%3s | %12s | %12s | %12s\n", "k", "e_k", "e_k+1/e_k", "e_k+1/e_k²")
+    println("-"^49)
+    for (i, e) in enumerate(erros)
+        k = i - 1
+        if k == 0
+            @printf("%3d | %12.3e |\n", k, e)
+        elseif e < 1e-14   # erro no nível do arredondamento: razões perdem sentido
+            @printf("%3d | %12.3e | (precisão de máquina atingida)\n", k, e)
+            break
+        else
+            @printf("%3d | %12.3e | %12.3e | %12.3e\n", k, e, e / erros[i-1], e / erros[i-1]^2)
+        end
+    end
+end
+
+# ----------------------------------------------------------------------
+# Exemplo 1 (Burden & Faires): solução x* = (0.5, 0, -π/6)
+#   3 x1 - cos(x2 x3) - 1/2                 = 0
+#   x1² - 81 (x2 + 0.1)² + sin x3 + 1.06    = 0
+#   exp(-x1 x2) + 20 x3 + (10π - 3)/3       = 0
+# ----------------------------------------------------------------------
+function F1(x)
+    x1, x2, x3 = x
+    return [3x1 - cos(x2 * x3) - 0.5,
+            x1^2 - 81 * (x2 + 0.1)^2 + sin(x3) + 1.06,
+            exp(-x1 * x2) + 20x3 + (10π - 3) / 3]
+end
+
+function J1(x)
+    x1, x2, x3 = x
+    return [3.0                    x3*sin(x2*x3)          x2*sin(x2*x3);
+            2x1                    -162*(x2 + 0.1)        cos(x3);
+            -x2*exp(-x1*x2)        -x1*exp(-x1*x2)        20.0]
+end
+
+x0 = [0.1, 0.1, -0.1]
+x_exato = [0.5, 0.0, -π/6]
+
+println("Exemplo 1 — jacobiana analítica\n")
+x, k = newton_sistema(F1, x0; J = J1)
+println("\nSolução em $k iterações: ", x)
+@printf("Erro ‖x - x*‖∞ = %.3e\n\n", norm(x - x_exato, Inf))
+
+println("Exemplo 1 — jacobiana por diferenças finitas\n")
+x, k = newton_sistema(F1, x0)
+println("\nSolução em $k iterações: ", x, "\n")
+
+println("Exemplo 1 — verificação da convergência quadrática\n")
+ordem_convergencia(F1, x0, x_exato; J = J1)
+println("(e_k+1/e_k → 0 e e_k+1/e_k² ≈ constante: ordem 2)\n")
+
+# ----------------------------------------------------------------------
+# Exemplo 2: interseção da circunferência com a hipérbole
+#   x² + y² - 4 = 0
+#   x y - 1     = 0
+# Quatro soluções; a aproximação inicial decide qual é encontrada.
+# ----------------------------------------------------------------------
+F2(v) = [v[1]^2 + v[2]^2 - 4, v[1] * v[2] - 1]
+J2(v) = [2v[1] 2v[2]; v[2] v[1]]
+
+println("="^60)
+println("Exemplo 2 — x² + y² = 4,  xy = 1 (diferentes x0)\n")
+for x0 in ([2.0, 0.5], [0.5, 2.0], [-2.0, -0.5], [-0.5, -2.0])
+    x, k = newton_sistema(F2, x0; J = J2, verbose = false)
+    @printf("x0 = %-14s ->  x* = (% .12f, % .12f)  em %d iterações\n", string(x0), x[1], x[2], k)
+end
+
+# J singular em x = y (det J = 2x² - 2y² = 0)
+println("\nx0 = [1, 1] (jacobiana singular):")
+try
+    newton_sistema(F2, [1.0, 1.0]; J = J2, verbose = false)
+catch e
+    println("   ", e.msg)
+end
