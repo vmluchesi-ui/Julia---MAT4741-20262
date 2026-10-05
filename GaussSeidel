@@ -1,0 +1,79 @@
+#=
+Método de Gauss-Seidel para resolução de sistemas lineares Ax = b.
+
+Iteração (componente a componente, usando os valores já atualizados):
+    x_i^(k+1) = ( b_i - Σ_{j<i} a_ij x_j^(k+1) - Σ_{j>i} a_ij x_j^(k) ) / a_ii
+
+Critério de parada: ||x^(k+1) - x^(k)||_∞ / ||x^(k+1)||_∞ < tol
+=#
+
+using LinearAlgebra
+using Printf
+
+"""Verifica se A é estritamente diagonal dominante por linhas
+(condição suficiente, não necessária, para convergência)."""
+function diagonal_dominante(A)
+    n = size(A, 1)
+    return all(abs(A[i, i]) > sum(abs(A[i, j]) for j in 1:n if j != i) for i in 1:n)
+end
+
+function gauss_seidel(A, b; x0 = nothing, tol = 1e-8, max_iter = 500, verbose = true)
+    A = float.(A)
+    b = float.(b)
+    n = length(b)
+
+    size(A) == (n, n) || error("A deve ser quadrada e compatível com b.")
+    any(iszero, diag(A)) && error("Há zero na diagonal; reordene as equações.")
+    diagonal_dominante(A) ||
+        println("Aviso: A não é estritamente diagonal dominante; a convergência não está garantida.")
+
+    x = x0 === nothing ? zeros(n) : float.(copy(x0))
+
+    if verbose
+        @printf("%4s | ", "k")
+        for i in 1:n
+            @printf("%12s | ", "x$i")
+        end
+        @printf("%12s\n", "erro rel.")
+        println("-"^(8 + 15 * (n + 1)))
+    end
+
+    for k in 1:max_iter
+        x_ant = copy(x)
+        for i in 1:n
+            s1 = sum(A[i, j] * x[j] for j in 1:i-1; init = 0.0)       # já atualizados
+            s2 = sum(A[i, j] * x_ant[j] for j in i+1:n; init = 0.0)   # iteração anterior
+            x[i] = (b[i] - s1 - s2) / A[i, i]
+        end
+
+        erro = norm(x - x_ant, Inf) / max(norm(x, Inf), 1e-30)
+
+        if verbose
+            @printf("%4d | ", k)
+            for xi in x
+                @printf("%12.8f | ", xi)
+            end
+            @printf("%12.3e\n", erro)
+        end
+
+        erro < tol && return x, k
+    end
+
+    println("Atenção: não convergiu em $max_iter iterações.")
+    return x, max_iter
+end
+
+# Exemplo (solução exata: x = [1, 2, -1, 1])
+A = [10 -1  2  0;
+     -1 11 -1  3;
+      2 -1 10 -1;
+      0  3 -1  8]
+b = [6, 25, -11, 15]
+
+x, it = gauss_seidel(A, b; tol = 1e-8)
+
+println("\nSolução após $it iterações:")
+for (i, xi) in enumerate(x)
+    @printf("  x%d = %.10f\n", i, xi)
+end
+@printf("Resíduo ||b - Ax||_∞ = %.3e\n", norm(b - A * x, Inf))
