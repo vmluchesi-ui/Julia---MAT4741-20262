@@ -43,3 +43,25 @@ let
         println("P($X) = ", newton_eval(a, x, X), "   exato = ", X^3 - 2X + 1)
     end
 end
+
+# Gráfico: f(x) = 1/x interpolada nos nós x0 = 1, x1 = 2, x2 = 4, x3 = 5
+using Plots
+
+let
+    f(t) = 1 / t
+    x = [1.0, 2.0, 4.0, 5.0]
+    y = f.(x)
+
+    a = newton_coef(x, y)
+    println("coeficientes (1/x): ", a)
+
+    t = range(0.8, 5.2, length=300)
+    P = newton_eval.(Ref(a), Ref(x), t)
+
+    plt = plot(t, f.(t), label="f(x) = 1/x", lw=2)
+    plot!(plt, t, P, label="P₃(x) (Newton)", lw=2, ls=:dash)
+    scatter!(plt, x, y, label="nós", ms=6)
+    xlabel!(plt, "x"); ylabel!(plt, "y")
+    title!(plt, "Interpolação de Newton para f(x) = 1/x")
+    display(plt)
+end
