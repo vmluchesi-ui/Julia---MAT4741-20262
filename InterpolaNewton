@@ -1,0 +1,45 @@
+"""
+    newton_coef(x, y)
+
+Coeficientes do polinômio de Newton (diferenças divididas).
+"""
+function newton_coef(x, y)
+    n = length(x)
+    a = float.(copy(y))   # cópia: não altera y
+
+    for i in 2:n
+        for k in n:-1:i
+            a[k] = (a[k] - a[k-1]) / (x[k] - x[k-i+1])
+        end
+    end
+    return a
+end
+
+"""
+    newton_eval(a, x, X)
+
+Avalia o polinômio de Newton em `X` pelo método de Horner.
+"""
+function newton_eval(a, x, X)
+    n = length(a)
+    P = a[n]
+
+    for i in n-1:-1:1
+        P = P * (X - x[i]) + a[i]
+    end
+    return P
+end
+
+# Exemplo: pontos de f(x) = x^3 - 2x + 1
+let
+    x = [0.0, 1.0, 2.0, 4.0]
+    y = x .^ 3 .- 2 .* x .+ 1
+
+    a = newton_coef(x, y)
+    println("coeficientes: ", a)   # esperado: [1.0, -1.0, 3.0, 1.0]
+
+    # avalia em pontos fora dos nós e compara com o valor exato
+    for X in [0.5, 3.0]
+        println("P($X) = ", newton_eval(a, x, X), "   exato = ", X^3 - 2X + 1)
+    end
+end
