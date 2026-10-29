@@ -1,0 +1,57 @@
+"""
+    gregory_newton(x, y)
+
+Tabela de diferenças progressivas para nós igualmente espaçados.
+`D[i, j]` = Δ^(j-1) y_i; a primeira linha contém y0, Δy0, Δ²y0, ...
+"""
+function gregory_newton(x, y)
+    n = length(x)
+    D = zeros(n, n)
+    D[:, 1] = y
+
+    for j in 2:n
+        for i in 1:n-j+1
+            D[i, j] = D[i+1, j-1] - D[i, j-1]
+        end
+    end
+    return D
+end
+
+"""
+    gregory_newton_eval(x, D, X)
+
+Avalia o polinômio de Gregory-Newton progressivo em `X`.
+
+- `x`: nós igualmente espaçados
+- `D`: tabela de diferenças (saída de `gregory_newton`)
+- `X`: ponto onde se deseja avaliar (para vetores use `gregory_newton_eval.(Ref(x), Ref(D), X)`)
+"""
+function gregory_newton_eval(x, D, X)
+    h = x[2] - x[1]
+    all(diff(x) .≈ h) || error("os nós precisam ser igualmente espaçados")
+    x0 = x[1]
+    u = (X - x0) / h
+    n = size(D, 1)
+
+    soma = D[1, 1]        # y0
+    termo = 1.0
+    for j in 2:n
+        termo = termo * (u - (j - 2)) / (j - 1)   # u(u-1)...(u-j+2) / (j-1)!
+        soma = soma + termo * D[1, j]
+    end
+    return soma
+end
+
+# Exemplo: pontos de f(x) = x^3 - 2x + 1 (nós igualmente espaçados, h = 1)
+let
+    x = [0.0, 1.0, 2.0, 3.0]
+    y = x .^ 3 .- 2 .* x .+ 1
+
+    D = gregory_newton(x, y)
+    println("primeira linha de D: ", D[1, :])   # esperado: [1.0, -1.0, 6.0, 6.0]
+
+    # avalia em pontos fora dos nós e compara com o valor exato
+    for X in [0.5, 4.0]
+        println("P($X) = ", gregory_newton_eval(x, D, X), "   exato = ", X^3 - 2X + 1)
+    end
+end
